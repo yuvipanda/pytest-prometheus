@@ -50,6 +50,7 @@ class PrometheusReport:
                 prefix=self.prefix,
                 funcname=report.location[2]
             )
+            print("Pushing metric {name}".format(name=name))
             metric = Gauge(name, report.nodeid, self.extra_labels.keys(), registry=registry)
             metric.labels(**self.extra_labels).set(1 if report.outcome == 'passed' else 0)
             push_to_gateway(self.pushgateway_url, registry=registry, job=self.job_name)
