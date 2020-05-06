@@ -1,5 +1,5 @@
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, generate_latest
 import logging
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 def pytest_addoption(parser):
     group = parser.getgroup('terminal reporting')
