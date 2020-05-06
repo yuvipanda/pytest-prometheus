@@ -72,34 +72,40 @@ class PrometheusReport:
 
             funcname = report.location[2]
             name = self._make_metric_name(funcname)
-            logging.debug("Pushing metric {name}".format(name=name))
-            metric = Gauge(name, report.nodeid, self.extra_labels.keys(), registry=self.registry)
-            # Wait WTF why is this a label? Come back to this Thomas
+            logging.debug("Creating metric {name}".format(name=name))
+            metric = Gauge(name,
+                    report.nodeid,
+                    labelnames=self.extra_labels.keys(),
+                    registry=self.registry)
+            # You can't just call metric.set(), you have to call metric.labels() first and include
+            # all the labels declared as `labelnames` in the constructor
             metric.labels(**self.extra_labels).set(metric_value)
-
-
-            #pushadd_to_gateway(self.pushgateway_url, registry=self.registry, job=self.job_name)
 
     def pytest_sessionfinish(self, session):
 
         passed_metric = Gauge(self._make_metric_name("passed"),
                 "Number of passed tests",
-                self.extra_labels.keys(),
+                labelnames=self.extra_labels.keys(),
                 registry=self.registry)
         passed_metric.labels(**self.extra_labels).set(self.passed)
 
         failed_metric = Gauge(self._make_metric_name("failed"),
                 "Number of failed tests",
-                self.extra_labels.keys(),
+                labelnames=self.extra_labels.keys(),
                 registry=self.registry)
         failed_metric.labels(**self.extra_labels).set(self.failed)
 
         skipped_metric = Gauge(self._make_metric_name("skipped"),
                 "Number of skipped tests",
-                self.extra_labels.keys(),
+                labelnames=self.extra_labels.keys(),
                 registry=self.registry)
         skipped_metric.labels(**self.extra_labels).set(self.skipped)
 
         push_to_gateway(self.pushgateway_url, registry=self.registry, job=self.job_name)
 
+    def pytest_terminal_summary(self, terminalreporter):
+        # Write to the pytest terminal
+        terminalreporter.write_sep('-',
+                'Sending test results to Prometheus pushgateway at {url}'.format(
+                    url=self.pushgateway_url))
 
