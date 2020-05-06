@@ -84,21 +84,21 @@ class PrometheusReport:
 
         passed_metric = Gauge(self._make_metric_name("passed"),
                 "Number of passed tests",
-                self.extra_labels.keys(), # This is in the original code, but why?
+                self.extra_labels.keys(),
                 registry=self.registry)
-        passed_metric.set(self.passed)
+        passed_metric.labels(**self.extra_labels).set(self.passed)
 
         failed_metric = Gauge(self._make_metric_name("failed"),
                 "Number of failed tests",
-                self.extra_labels.keys(), # This is in the original code, but why?
+                self.extra_labels.keys(),
                 registry=self.registry)
-        failed_metric.set(self.failed)
+        failed_metric.labels(**self.extra_labels).set(self.failed)
 
         skipped_metric = Gauge(self._make_metric_name("skipped"),
                 "Number of skipped tests",
-                self.extra_labels.keys(), # This is in the original code, but why?
+                self.extra_labels.keys(),
                 registry=self.registry)
-        skipped_metric.set(self.skipped)
+        skipped_metric.labels(**self.extra_labels).set(self.skipped)
 
         push_to_gateway(self.pushgateway_url, registry=self.registry, job=self.job_name)
 
