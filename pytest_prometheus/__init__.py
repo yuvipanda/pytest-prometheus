@@ -1,4 +1,5 @@
 import logging
+import re
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 def pytest_addoption(parser):
@@ -49,10 +50,15 @@ class PrometheusReport:
         self.extra_labels = {item[0]: item[1] for item in [i.split('=', 1) for i in config.getoption('prometheus_extra_label')]}
 
     def _make_metric_name(self, name):
-        return '{prefix}{name}'.format(
+        unsanitized_name = '{prefix}{name}'.format(
                 prefix=self.prefix,
                 name=name
         )
+        # Valid names can only contain these characters, replace all others with _
+        # https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+        pattern = r'[^a-zA-Z0-9_]'
+        replacement = '_'
+        return re.sub(pattern, replacement, unsanitized_name)
 
     def pytest_runtest_logreport(self, report):
         # https://docs.pytest.org/en/latest/reference.html#_pytest.runner.TestReport.when
