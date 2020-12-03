@@ -1,4 +1,6 @@
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, generate_latest
+import logging
+import re
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 def pytest_addoption(parser):
     group = parser.getgroup('terminal reporting')
@@ -39,17 +41,82 @@ class PrometheusReport:
         self.prefix = config.getoption('prometheus_metric_prefix')
         self.pushgateway_url = config.getoption('prometheus_pushgateway_url')
         self.job_name = config.getoption('prometheus_job_name')
+        self.registry = CollectorRegistry()
+
+        self.passed = []
+        self.failed = []
+        self.skipped = []
 
         self.extra_labels = {item[0]: item[1] for item in [i.split('=', 1) for i in config.getoption('prometheus_extra_label')]}
-        print(self.extra_labels)
+
+    def _make_metric_name(self, name):
+        unsanitized_name = '{prefix}{name}'.format(
+                prefix=self.prefix,
+                name=name
+        )
+        # Valid names can only contain these characters, replace all others with _
+        # https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+        pattern = r'[^a-zA-Z0-9_]'
+        replacement = '_'
+        return re.sub(pattern, replacement, unsanitized_name)
+
+    def _make_labels(self, testname):
+        ret = self.extra_labels.copy()
+        ret["testname"] = testname
+        return ret
+
+    def _get_label_names(self):
+        return self._make_labels("").keys()
+
+    def add_metrics_for_tests(self, metric, testnames):
+        for testname in testnames:
+            labels = self._make_labels(testname)
+            metric.labels(**labels).inc()
+
 
     def pytest_runtest_logreport(self, report):
+        # https://docs.pytest.org/en/latest/reference.html#_pytest.runner.TestReport.when
+        # 'call' is the phase when the test is being ran
         if report.when == 'call':
-            registry = CollectorRegistry()
-            name = '{prefix}{funcname}'.format(
-                prefix=self.prefix,
-                funcname=report.location[2]
-            )
-            metric = Gauge(name, report.nodeid, self.extra_labels.keys(), registry=registry)
-            metric.labels(**self.extra_labels).set(1 if report.outcome == 'passed' else 0)
-            push_to_gateway(self.pushgateway_url, registry=registry, job=self.job_name)
+
+            funcname = report.location[2]
+            name = self._make_metric_name(funcname)
+
+            if report.outcome == 'passed':
+                self.passed.append(name)
+            elif report.outcome == 'skipped':
+                self.skipped.append(name)
+            elif report.outcome == 'failed':
+                self.failed.append(name)
+
+
+
+    def pytest_sessionfinish(self, session):
+
+        passed_metric = Gauge(self._make_metric_name("passed"),
+                "Number of passed tests",
+                labelnames=self._get_label_names(),
+                registry=self.registry)
+        self.add_metrics_for_tests(passed_metric, self.passed)
+
+
+        failed_metric = Gauge(self._make_metric_name("failed"),
+                "Number of failed tests",
+                labelnames=self._get_label_names(),
+                registry=self.registry)
+        self.add_metrics_for_tests(failed_metric, self.failed)
+
+        skipped_metric = Gauge(self._make_metric_name("skipped"),
+                "Number of skipped tests",
+                labelnames=self._get_label_names(),
+                registry=self.registry)
+        self.add_metrics_for_tests(skipped_metric, self.skipped)
+
+        push_to_gateway(self.pushgateway_url, registry=self.registry, job=self.job_name)
+
+    def pytest_terminal_summary(self, terminalreporter):
+        # Write to the pytest terminal
+        terminalreporter.write_sep('-',
+                'Sending test results to Prometheus pushgateway at {url}'.format(
+                    url=self.pushgateway_url))
+
